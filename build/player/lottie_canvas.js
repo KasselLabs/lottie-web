@@ -2385,7 +2385,7 @@ var PropertyFactory = (function(){
         var i, len = this.effectsSequence.length;
         var finalValue = this.kf ? this.pv : this.data.k;
         for(i = 0; i < len; i += 1) {
-            finalValue = this.effectsSequence[i](finalValue);
+            finalValue = this.effectsSequence[i](finalValue) || finalValue;
         }
         this.setVValue(finalValue);
         this._isFirstFrame = false;
@@ -2988,7 +2988,7 @@ var ShapePropertyFactory = (function(){
         var finalValue = this.kf ? this.pv : this.data.ks ? this.data.ks.k : this.data.pt.k;
         var i, len = this.effectsSequence.length;
         for(i = 0; i < len; i += 1) {
-            finalValue = this.effectsSequence[i](finalValue);
+            finalValue = this.effectsSequence[i](finalValue) || finalValue;
         }
         this.setVValue(finalValue);
         this.lock = false;
@@ -10439,7 +10439,13 @@ var ExpressionManager = (function(){
             if (needsVelocity) {
                 velocity = velocityAtTime(time);
             }
-            expression_function();
+
+            try {
+              expression_function();
+            } catch(e) {
+              return null;
+            }
+
             this.frameExpressionId = elem.globalData.frameId;
 
 
