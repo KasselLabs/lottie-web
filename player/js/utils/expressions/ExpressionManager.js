@@ -656,7 +656,6 @@ var ExpressionManager = (function(){
 
             this.frameExpressionId = elem.globalData.frameId;
 
-
             //TODO: Check if it's possible to return on ShapeInterface the .v value
             if (scoped_bm_rt.propType === "shape") {
                 scoped_bm_rt = scoped_bm_rt.v;

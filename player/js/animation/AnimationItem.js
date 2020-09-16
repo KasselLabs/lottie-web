@@ -22,20 +22,18 @@ var AnimationItem = function () {
     this.assetsPath = '';
     this.timeCompleted = 0;
     this.segmentPos = 0;
-    this.subframeEnabled = subframeEnabled;
+    this.isSubframeEnabled = subframeEnabled;
     this.segments = [];
     this._idle = true;
     this._completedLoop = false;
     this.projectInterface = ProjectInterface();
     this.imagePreloader = new ImagePreloader();
+    this.audioController = audioControllerFactory();
 };
 
 extendPrototype([BaseEvent], AnimationItem);
 
 AnimationItem.prototype.setParams = function(params) {
-    if(params.context){
-        this.context = params.context;
-    }
     if(params.wrapper || params.container){
         this.wrapper = params.wrapper || params.container;
     }
@@ -51,15 +49,18 @@ AnimationItem.prototype.setParams = function(params) {
             this.renderer = new HybridRenderer(this, params.rendererSettings);
             break;
     }
+    this.imagePreloader.setCacheType(animType);
     this.renderer.setProjectInterface(this.projectInterface);
     this.animType = animType;
-
-    if(params.loop === '' || params.loop === null){
-    }else if(params.loop === false){
-        this.loop = false;
-    }else if(params.loop === true){
+    if (params.loop === ''
+        || params.loop === null
+        || params.loop === undefined
+        || params.loop === true)
+    {
         this.loop = true;
-    }else{
+    } else if (params.loop === false) {
+        this.loop = false;
+    } else {
         this.loop = parseInt(params.loop);
     }
     this.autoplay = 'autoplay' in params ? params.autoplay : true;
@@ -67,6 +68,9 @@ AnimationItem.prototype.setParams = function(params) {
     this.autoloadSegments = params.hasOwnProperty('autoloadSegments') ? params.autoloadSegments :  true;
     this.assetsPath = params.assetsPath;
     this.initialSegment = params.initialSegment;
+    if (params.audioFactory) {
+        this.audioController.setAudioFactory(params.audioFactory);
+    }
     if (params.animationData) {
         this.configAnimation(params.animationData);
     } else if(params.path){
@@ -218,6 +222,9 @@ AnimationItem.prototype.configAnimation = function (animData) {
         this.loadSegments();
         this.updaFrameModifier();
         this.waitForFontsLoaded();
+        if (this.isPaused) {
+            this.audioController.pause();
+        }
     } catch(error) {
         this.triggerConfigError(error);
     }
@@ -227,7 +234,7 @@ AnimationItem.prototype.waitForFontsLoaded = function(){
     if(!this.renderer) {
         return;
     }
-    if(this.renderer.globalData.fontManager.loaded()){
+    if(this.renderer.globalData.fontManager.isLoaded){
         this.checkLoaded();
     }else{
         setTimeout(this.waitForFontsLoaded.bind(this),20);
@@ -235,7 +242,10 @@ AnimationItem.prototype.waitForFontsLoaded = function(){
 }
 
 AnimationItem.prototype.checkLoaded = function () {
-    if (!this.isLoaded && this.renderer.globalData.fontManager.loaded() && (this.imagePreloader.loaded() || this.renderer.rendererType !== 'canvas')) {
+    if (!this.isLoaded 
+        && this.renderer.globalData.fontManager.isLoaded
+        && (this.imagePreloader.loaded() || this.renderer.rendererType !== 'canvas')
+    ) {
         this.isLoaded = true;
         dataManager.completeData(this.animationData, this.renderer.globalData.fontManager);
         if(expressionsPlugin){
@@ -257,11 +267,11 @@ AnimationItem.prototype.resize = function () {
 };
 
 AnimationItem.prototype.setSubframe = function(flag){
-    this.subframeEnabled = flag ? true : false;
+    this.isSubframeEnabled = !!flag;
 };
 
 AnimationItem.prototype.gotoFrame = function () {
-    this.currentFrame = this.subframeEnabled ? this.currentRawFrame : ~~this.currentRawFrame;
+    this.currentFrame = this.isSubframeEnabled ? this.currentRawFrame : ~~this.currentRawFrame;
 
     if(this.timeCompleted !== this.totalFrames && this.currentFrame > this.timeCompleted){
         this.currentFrame = this.timeCompleted;
@@ -285,8 +295,9 @@ AnimationItem.prototype.play = function (name) {
     if(name && this.name != name){
         return;
     }
-    if(this.isPaused === true){
+    if (this.isPaused === true) {
         this.isPaused = false;
+        this.audioController.resume();
         if(this._idle){
             this._idle = false;
             this.trigger('_active');
@@ -302,6 +313,7 @@ AnimationItem.prototype.pause = function (name) {
         this.isPaused = true;
         this._idle = true;
         this.trigger('_idle');
+        this.audioController.pause();
     }
 };
 
@@ -498,8 +510,34 @@ AnimationItem.prototype.setDirection = function (val) {
     this.updaFrameModifier();
 };
 
+AnimationItem.prototype.setVolume = function (val, name) {
+    if (name && this.name !== name) {
+        return;
+    }
+    this.audioController.setVolume(val);
+};
+
+AnimationItem.prototype.getVolume = function () {
+    return this.audioController.getVolume();
+};
+
+AnimationItem.prototype.mute = function (name) {
+    if (name && this.name !== name) {
+        return;
+    }
+    this.audioController.mute();
+};
+
+AnimationItem.prototype.unmute = function (name) {
+    if(name && this.name !== name){
+        return;
+    }
+    this.audioController.unmute();
+};
+
 AnimationItem.prototype.updaFrameModifier = function () {
     this.frameModifier = this.frameMult * this.playSpeed * this.playDirection;
+    this.audioController.setRate(this.playSpeed * this.playDirection)
 };
 
 AnimationItem.prototype.getPath = function () {

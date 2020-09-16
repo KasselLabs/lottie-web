@@ -689,7 +689,11 @@ var Matrix = (function(){
         if(this.isIdentity()) {
             arr = [x,y,z];
         } else {
-            arr = [x * this.props[0] + y * this.props[4] + z * this.props[8] + this.props[12],x * this.props[1] + y * this.props[5] + z * this.props[9] + this.props[13],x * this.props[2] + y * this.props[6] + z * this.props[10] + this.props[14]];
+            arr = [
+                x * this.props[0] + y * this.props[4] + z * this.props[8] + this.props[12],
+                x * this.props[1] + y * this.props[5] + z * this.props[9] + this.props[13],
+                x * this.props[2] + y * this.props[6] + z * this.props[10] + this.props[14]
+            ];
         }
         return arr;
     }
@@ -1823,12 +1827,24 @@ var FontManager = (function(){
     , 2367, 2368, 2369, 2370, 2371, 2372, 2373, 2374, 2375, 2376, 2377, 2378, 2379
     , 2380, 2381, 2382, 2383, 2387, 2388, 2389, 2390, 2391, 2402, 2403]);
 
+    function trimFontOptions(font) {
+        var familyArray = font.split(',');
+        var i, len = familyArray.length;
+        var enabledFamilies = [];
+        for (i = 0; i < len; i += 1) {
+            if (familyArray[i] !== 'sans-serif' && familyArray[i] !== 'monospace') {
+                enabledFamilies.push(familyArray[i]);
+            }
+        }
+        return enabledFamilies.join(',');
+    }
+
     function setUpNode(font, family){
         var parentNode = createTag('span');
         parentNode.style.fontFamily    = family;
         var node = createTag('span');
         // Characters that vary significantly among different fonts
-        node.innerHTML = 'giItT1WQy@!-/#';
+        node.innerText = 'giItT1WQy@!-/#';
         // Visible - so we can measure it - but not on the screen
         parentNode.style.position      = 'absolute';
         parentNode.style.left          = '-10000px';
@@ -1845,7 +1861,7 @@ var FontManager = (function(){
 
         // Remember width with no applied web font
         var width = node.offsetWidth;
-        node.style.fontFamily = font + ', '+family;
+        node.style.fontFamily = trimFontOptions(font) + ', ' + family;
         return {node:node, w:width, parent:parentNode};
     }
 
@@ -1882,9 +1898,9 @@ var FontManager = (function(){
         }
 
         if(loadedCount !== 0 && Date.now() - this.initTime < maxWaitingTime){
-            setTimeout(this.checkLoadedFonts.bind(this),20);
+            setTimeout(this.checkLoadedFontsBinded, 20);
         }else{
-            setTimeout(function(){this.isLoaded = true;}.bind(this),0);
+            setTimeout(this.setIsLoadedBinded, 10);
 
         }
     }
@@ -1948,7 +1964,7 @@ var FontManager = (function(){
                     s.setAttribute('f-origin', fontArr[i].origin);
                     s.setAttribute('f-family', fontArr[i].fFamily);
                     s.type = "text/css";
-                    s.innerHTML = "@font-face {" + "font-family: "+fontArr[i].fFamily+"; font-style: normal; src: url('"+fontArr[i].fPath+"');}";
+                    s.innerText = "@font-face {" + "font-family: "+fontArr[i].fFamily+"; font-style: normal; src: url('"+fontArr[i].fPath+"');}";
                     defs.appendChild(s);
                 }
             } else if(fontArr[i].fOrigin === 'g' || fontArr[i].origin === 1){
@@ -2080,8 +2096,8 @@ var FontManager = (function(){
         return combinedCharacters;
     }
 
-    function loaded() {
-        return this.isLoaded;
+    function setIsLoaded() {
+        this.isLoaded = true
     }
 
     var Font = function(){
@@ -2090,21 +2106,28 @@ var FontManager = (function(){
         this.typekitLoaded = 0;
         this.isLoaded = false;
         this.initTime = Date.now();
+        this.setIsLoadedBinded = this.setIsLoaded.bind(this)
+        this.checkLoadedFontsBinded = this.checkLoadedFonts.bind(this)
     };
     //TODO: for now I'm adding these methods to the Class and not the prototype. Think of a better way to implement it. 
     Font.getCombinedCharacterCodes = getCombinedCharacterCodes;
 
-    Font.prototype.addChars = addChars;
-    Font.prototype.addFonts = addFonts;
-    Font.prototype.getCharData = getCharData;
-    Font.prototype.getFontByName = getFontByName;
-    Font.prototype.measureText = measureText;
-    Font.prototype.checkLoadedFonts = checkLoadedFonts;
-    Font.prototype.loaded = loaded;
+    var fontPrototype = {
+        addChars: addChars,
+        addFonts: addFonts,
+        getCharData: getCharData,
+        getFontByName: getFontByName,
+        measureText: measureText,
+        checkLoadedFonts: checkLoadedFonts,
+        setIsLoaded: setIsLoaded,
+    }
+
+    Font.prototype = fontPrototype;
 
     return Font;
 
 }());
+
 var PropertyFactory = (function(){
 
     var initFrame = initialDefaultFrame;
@@ -3533,6 +3556,9 @@ TrimModifier.prototype.processShapes = function(_isFirstFrame) {
             this.shapes[i].localShapeCollection.releaseShapes();
             this.shapes[i].shape._mdf = true;
             this.shapes[i].shape.paths = this.shapes[i].localShapeCollection;
+            if (this._mdf) {
+                this.shapes[i].pathsData.length = 0;
+            }
         }
     } else if (!((e === 1 && s === 0) || (e===0 && s === 1))){
         var segments = [], shapeData, localShapeCollection;
@@ -3834,6 +3860,68 @@ RoundCornersModifier.prototype.processShapes = function(_isFirstFrame){
 };
 
 ShapeModifiers.registerModifier('rd',RoundCornersModifier);
+function PuckerAndBloatModifier(){}
+extendPrototype([ShapeModifier],PuckerAndBloatModifier);
+PuckerAndBloatModifier.prototype.initModifierProperties = function(elem,data){
+    this.getValue = this.processKeys;
+    this.amount = PropertyFactory.getProp(elem,data.a,0,null,this);
+    this._isAnimated = !!this.amount.effectsSequence.length;
+};
+
+PuckerAndBloatModifier.prototype.processPath = function(path, amount){
+    var percent = amount / 100;
+    var centerPoint = [0, 0];
+    var pathLength = path._length, i = 0;
+    for (i = 0; i < pathLength; i += 1) {
+        centerPoint[0] += path.v[i][0];
+        centerPoint[1] += path.v[i][1];
+    }
+    centerPoint[0] /= pathLength;
+    centerPoint[1] /= pathLength;
+    var cloned_path = shape_pool.newElement();
+    cloned_path.c = path.c;
+    var vX, vY, oX, oY, iX, iY;
+    for(i = 0; i < pathLength; i += 1) {
+        vX = path.v[i][0] + (centerPoint[0] - path.v[i][0]) * percent;
+        vY = path.v[i][1] + (centerPoint[1] - path.v[i][1]) * percent;
+        oX = path.o[i][0] + (centerPoint[0] - path.o[i][0]) * -percent;
+        oY = path.o[i][1] + (centerPoint[1] - path.o[i][1]) * -percent;
+        iX = path.i[i][0] + (centerPoint[0] - path.i[i][0]) * -percent;
+        iY = path.i[i][1] + (centerPoint[1] - path.i[i][1]) * -percent;
+        cloned_path.setTripleAt(vX, vY, oX, oY, iX, iY, i);
+    }
+    return cloned_path;
+};
+
+PuckerAndBloatModifier.prototype.processShapes = function(_isFirstFrame){
+    var shapePaths;
+    var i, len = this.shapes.length;
+    var j, jLen;
+    var amount = this.amount.v;
+
+    if(amount !== 0){
+        var shapeData, newPaths, localShapeCollection;
+        for(i=0;i<len;i+=1){
+            shapeData = this.shapes[i];
+            newPaths = shapeData.shape.paths;
+            localShapeCollection = shapeData.localShapeCollection;
+            if(!(!shapeData.shape._mdf && !this._mdf && !_isFirstFrame)){
+                localShapeCollection.releaseShapes();
+                shapeData.shape._mdf = true;
+                shapePaths = shapeData.shape.paths.shapes;
+                jLen = shapeData.shape.paths._length;
+                for(j=0;j<jLen;j+=1){
+                    localShapeCollection.addShape(this.processPath(shapePaths[j], amount));
+                }
+            }
+            shapeData.shape.paths = shapeData.localShapeCollection;
+        }
+    }
+    if(!this.dynamicProperties.length){
+        this._mdf = false;
+    }
+};
+ShapeModifiers.registerModifier('pb',PuckerAndBloatModifier);
 function RepeaterModifier(){}
 extendPrototype([ShapeModifier], RepeaterModifier);
 
@@ -4200,6 +4288,86 @@ var buildShapeString = function(pathNodes, length, closed, mat) {
         }
         return shapeString;
 }
+var audioControllerFactory = (function() {
+
+	function AudioController(audioFactory) {
+		this.audios = [];
+		this.audioFactory = audioFactory;
+		this._volume = 1;
+		this._isMuted = false;
+	}
+
+	AudioController.prototype = {
+		addAudio: function(audio) {
+			this.audios.push(audio);
+		},
+		pause: function() {
+			var i, len = this.audios.length;
+			for(i = 0; i < len; i += 1) {
+				this.audios[i].pause()
+			}
+		},
+		resume: function() {
+			var i, len = this.audios.length;
+			for(i = 0; i < len; i += 1) {
+				this.audios[i].resume()
+			}
+		},
+		setRate: function(rateValue) {
+			var i, len = this.audios.length;
+			for(i = 0; i < len; i += 1) {
+				this.audios[i].setRate(rateValue)
+			}
+		},
+		createAudio: function(assetPath) {
+			if (this.audioFactory) {
+				return this.audioFactory(assetPath);
+			} else if (Howl) {
+				return new Howl({
+					src: [assetPath]
+				})
+			} else {
+				return {
+					isPlaying: false,
+					play: function(){this.isPlaying = true},
+					seek: function(){this.isPlaying = false},
+					playing: function(){},
+					rate: function(){},
+					setVolume: function(){},
+				}
+			}
+		},
+		setAudioFactory: function(audioFactory) {
+			this.audioFactory = audioFactory;
+		},
+		setVolume: function(value) {
+			this._volume = value;
+			this._updateVolume();
+		},
+		mute: function() {
+			this._isMuted = true;
+			this._updateVolume();
+		},
+		unmute: function() {
+			this._isMuted = false;
+			this._updateVolume();
+		},
+		getVolume: function(value) {
+			return this._volume;
+		},
+		_updateVolume: function() {
+			var i, len = this.audios.length;
+			for(i = 0; i < len; i += 1) {
+				this.audios[i].volume(this._volume * (this._isMuted ? 0 : 1))
+			}
+		}
+	}
+
+	return function() {
+		return new AudioController()
+	}
+
+}())
 var ImagePreloader = (function(){
 
     var proxyImage = (function(){
@@ -4241,9 +4409,25 @@ var ImagePreloader = (function(){
 
     function createImageData(assetData) {
         var path = getAssetsPath(assetData, this.assetsPath, this.path);
+        var img = createNS('image');
+        img.addEventListener('load', this._imageLoaded, false);
+        img.addEventListener('error', function() {
+            ob.img = proxyImage;
+            this._imageLoaded();
+        }.bind(this), false);
+        img.setAttributeNS('http://www.w3.org/1999/xlink','href', path);
+        var ob = {
+            img: img,
+            assetData: assetData
+        }
+        return ob;
+    }
+
+    function createImgData(assetData) {
+        var path = getAssetsPath(assetData, this.assetsPath, this.path);
         var img = createTag('img');
         img.crossOrigin = 'anonymous';
-        img.addEventListener('load', this._imageLoaded.bind(this), false);
+        img.addEventListener('load', this._imageLoaded, false);
         img.addEventListener('error', function() {
             ob.img = proxyImage;
             this._imageLoaded();
@@ -4294,15 +4478,16 @@ var ImagePreloader = (function(){
         return this.totalImages === this.loadedAssets;
     }
 
-    return function ImagePreloader(){
-        this.loadAssets = loadAssets;
-        this.setAssetsPath = setAssetsPath;
-        this.setPath = setPath;
-        this.loaded = loaded;
-        this.destroy = destroy;
-        this.getImage = getImage;
-        this._createImageData = createImageData;
-        this._imageLoaded = imageLoaded;
+    function setCacheType(type) {
+        if (type === 'svg') {
+            this._createImageData = this.createImageData.bind(this);
+        } else {
+            this._createImageData = this.createImgData.bind(this);
+        }
+    }
+
+    function ImagePreloader(type){
+        this._imageLoaded = imageLoaded.bind(this);
         this.assetsPath = '';
         this.path = '';
         this.totalImages = 0;
@@ -4310,6 +4495,21 @@ var ImagePreloader = (function(){
         this.imagesLoadedCb = null;
         this.images = [];
     };
+
+    ImagePreloader.prototype = {
+        loadAssets: loadAssets,
+        setAssetsPath: setAssetsPath,
+        setPath: setPath,
+        loaded: loaded,
+        destroy: destroy,
+        getImage: getImage,
+        createImgData: createImgData,
+        createImageData: createImageData,
+        imageLoaded: imageLoaded,
+        setCacheType: setCacheType,
+    }
+
+    return ImagePreloader;
 }());
 var featureSupport = (function(){
 	var ob = {
@@ -5821,6 +6021,8 @@ BaseRenderer.prototype.createItem = function(layer){
             return this.createShape(layer);
         case 5:
             return this.createText(layer);
+        case 6:
+            return this.createAudio(layer);
         case 13:
             return this.createCamera(layer);
     }
@@ -5829,6 +6031,10 @@ BaseRenderer.prototype.createItem = function(layer){
 
 BaseRenderer.prototype.createCamera = function(){
     throw new Error('You\'re using a 3d camera. Try the html renderer.');
+};
+
+BaseRenderer.prototype.createAudio = function(data){
+    return new AudioElement(data, this.globalData, this);
 };
 
 BaseRenderer.prototype.buildAllItems = function(){
@@ -5909,6 +6115,7 @@ BaseRenderer.prototype.setupGlobalData = function(animData, fontsContainer) {
     this.globalData.getAssetData = this.animationItem.getAssetData.bind(this.animationItem);
     this.globalData.getAssetsPath = this.animationItem.getAssetsPath.bind(this.animationItem);
     this.globalData.imageLoader = this.animationItem.imagePreloader;
+    this.globalData.audioController = this.animationItem.audioController;
     this.globalData.frameId = 0;
     this.globalData.frameRate = animData.fr;
     this.globalData.nm = animData.nm;
@@ -6059,7 +6266,7 @@ SVGRenderer.prototype.configAnimation = function(animData){
 
 
 SVGRenderer.prototype.destroy = function () {
-    this.animationItem.wrapper.innerHTML = '';
+    this.animationItem.wrapper.innerText = '';
     this.layerElement = null;
     this.globalData.defs = null;
     var i, len = this.layers ? this.layers.length : 0;
@@ -7684,6 +7891,88 @@ ISolidElement.prototype.createContent = function(){
     rect.setAttribute('fill',this.data.sc);
     this.layerElement.appendChild(rect);
 };
+function AudioElement(data,globalData,comp){
+    this.initFrame();
+    this.initRenderable();
+    this.assetData = globalData.getAssetData(data.refId);
+	this.initBaseData(data, globalData, comp);
+	this._isPlaying = false;
+	this._canPlay = false;
+	var assetPath = this.globalData.getAssetsPath(this.assetData);
+    this.audio = this.globalData.audioController.createAudio(assetPath);
+    this._currentTime = 0;
+    this.globalData.audioController.addAudio(this);
+    this.tm = data.tm ? PropertyFactory.getProp(this, data.tm, 0, globalData.frameRate,this) : {_placeholder:true};
+}
+
+AudioElement.prototype.prepareFrame = function(num) {
+    this.prepareRenderableFrame(num, true);
+    this.prepareProperties(num, true);
+    if (!this.tm._placeholder) {
+        var timeRemapped = this.tm.v;
+        this._currentTime = timeRemapped;
+    } else {
+        this._currentTime = num / this.data.sr;
+    }
+};
+
+extendPrototype([RenderableElement,BaseElement,FrameElement], AudioElement);
+
+AudioElement.prototype.renderFrame = function() {
+	if (this.isInRange && this._canPlay) {
+		if (!this._isPlaying) {
+			this.audio.play();
+			this.audio.seek(this._currentTime / this.globalData.frameRate);
+			this._isPlaying = true;
+		} else if (!this.audio.playing()
+			|| Math.abs(this._currentTime / this.globalData.frameRate - this.audio.seek()) > 0.1
+		) {
+			this.audio.seek(this._currentTime / this.globalData.frameRate)
+		}
+	}
+};
+
+AudioElement.prototype.show = function() {
+	// this.audio.play()
+};
+
+AudioElement.prototype.hide = function() {
+	this.audio.pause();
+	this._isPlaying = false;
+};
+
+AudioElement.prototype.pause = function() {
+	this.audio.pause();
+	this._isPlaying = false;
+	this._canPlay = false;
+};
+
+AudioElement.prototype.resume = function() {
+	this._canPlay = true;
+};
+
+AudioElement.prototype.setRate = function(rateValue) {
+	this.audio.rate(rateValue);
+};
+
+AudioElement.prototype.volume = function(volumeValue) {
+	this.audio.volume(volumeValue);
+};
+
+AudioElement.prototype.getBaseElement = function() {
+	return null;
+};
+
+AudioElement.prototype.destroy = function() {
+};
+
+AudioElement.prototype.sourceRectAtTime = function() {
+};
+
+AudioElement.prototype.initExpressions = function() {
+};
+
+
 function SVGCompElement(data,globalData,comp){
     this.layers = data.layers;
     this.supports3d = true;
@@ -8147,7 +8436,7 @@ SVGShapeElement.prototype.searchShapes = function(arr,itemsData,prevViewData,con
             }
             this.setElementStyles(itemsData[i]);
 
-        }else if(arr[i].ty == 'tm' || arr[i].ty == 'rd' || arr[i].ty == 'ms'){
+        }else if(arr[i].ty == 'tm' || arr[i].ty == 'rd' || arr[i].ty == 'ms' || arr[i].ty == 'pb'){
             if(!processedPos){
                 modifier = ShapeModifiers.getModifier(arr[i].ty);
                 modifier.init(this,arr[i]);
@@ -8950,7 +9239,7 @@ var animationManager = (function(){
                 renderer = 'svg';
             }
             var body = document.getElementsByTagName('body')[0];
-            body.innerHTML = '';
+            body.innerText = '';
             var div = createTag('div');
             div.style.width = '100%';
             div.style.height = '100%';
@@ -8985,6 +9274,27 @@ var animationManager = (function(){
         activate();
     }
 
+    function setVolume(val,animation) {
+        var i;
+        for(i=0;i<len;i+=1){
+            registeredAnimations[i].animation.setVolume(val, animation);
+        }
+    }
+
+    function mute(animation) {
+        var i;
+        for(i=0;i<len;i+=1){
+            registeredAnimations[i].animation.mute(animation);
+        }
+    }
+
+    function unmute(animation) {
+        var i;
+        for(i=0;i<len;i+=1){
+            registeredAnimations[i].animation.unmute(animation);
+        }
+    }
+
     moduleOb.registerAnimation = registerAnimation;
     moduleOb.loadAnimation = loadAnimation;
     moduleOb.setSpeed = setSpeed;
@@ -9000,6 +9310,9 @@ var animationManager = (function(){
     moduleOb.destroy = destroy;
     moduleOb.freeze = freeze;
     moduleOb.unfreeze = unfreeze;
+    moduleOb.setVolume = setVolume;
+    moduleOb.mute = mute;
+    moduleOb.unmute = unmute;
     moduleOb.getRegisteredAnimations = getRegisteredAnimations;
     return moduleOb;
 }());
@@ -9028,20 +9341,18 @@ var AnimationItem = function () {
     this.assetsPath = '';
     this.timeCompleted = 0;
     this.segmentPos = 0;
-    this.subframeEnabled = subframeEnabled;
+    this.isSubframeEnabled = subframeEnabled;
     this.segments = [];
     this._idle = true;
     this._completedLoop = false;
     this.projectInterface = ProjectInterface();
     this.imagePreloader = new ImagePreloader();
+    this.audioController = audioControllerFactory();
 };
 
 extendPrototype([BaseEvent], AnimationItem);
 
 AnimationItem.prototype.setParams = function(params) {
-    if(params.context){
-        this.context = params.context;
-    }
     if(params.wrapper || params.container){
         this.wrapper = params.wrapper || params.container;
     }
@@ -9057,15 +9368,18 @@ AnimationItem.prototype.setParams = function(params) {
             this.renderer = new HybridRenderer(this, params.rendererSettings);
             break;
     }
+    this.imagePreloader.setCacheType(animType);
     this.renderer.setProjectInterface(this.projectInterface);
     this.animType = animType;
-
-    if(params.loop === '' || params.loop === null){
-    }else if(params.loop === false){
-        this.loop = false;
-    }else if(params.loop === true){
+    if (params.loop === ''
+        || params.loop === null
+        || params.loop === undefined
+        || params.loop === true)
+    {
         this.loop = true;
-    }else{
+    } else if (params.loop === false) {
+        this.loop = false;
+    } else {
         this.loop = parseInt(params.loop);
     }
     this.autoplay = 'autoplay' in params ? params.autoplay : true;
@@ -9073,6 +9387,9 @@ AnimationItem.prototype.setParams = function(params) {
     this.autoloadSegments = params.hasOwnProperty('autoloadSegments') ? params.autoloadSegments :  true;
     this.assetsPath = params.assetsPath;
     this.initialSegment = params.initialSegment;
+    if (params.audioFactory) {
+        this.audioController.setAudioFactory(params.audioFactory);
+    }
     if (params.animationData) {
         this.configAnimation(params.animationData);
     } else if(params.path){
@@ -9224,6 +9541,9 @@ AnimationItem.prototype.configAnimation = function (animData) {
         this.loadSegments();
         this.updaFrameModifier();
         this.waitForFontsLoaded();
+        if (this.isPaused) {
+            this.audioController.pause();
+        }
     } catch(error) {
         this.triggerConfigError(error);
     }
@@ -9233,7 +9553,7 @@ AnimationItem.prototype.waitForFontsLoaded = function(){
     if(!this.renderer) {
         return;
     }
-    if(this.renderer.globalData.fontManager.loaded()){
+    if(this.renderer.globalData.fontManager.isLoaded){
         this.checkLoaded();
     }else{
         setTimeout(this.waitForFontsLoaded.bind(this),20);
@@ -9241,7 +9561,10 @@ AnimationItem.prototype.waitForFontsLoaded = function(){
 }
 
 AnimationItem.prototype.checkLoaded = function () {
-    if (!this.isLoaded && this.renderer.globalData.fontManager.loaded() && (this.imagePreloader.loaded() || this.renderer.rendererType !== 'canvas')) {
+    if (!this.isLoaded 
+        && this.renderer.globalData.fontManager.isLoaded
+        && (this.imagePreloader.loaded() || this.renderer.rendererType !== 'canvas')
+    ) {
         this.isLoaded = true;
         dataManager.completeData(this.animationData, this.renderer.globalData.fontManager);
         if(expressionsPlugin){
@@ -9263,11 +9586,11 @@ AnimationItem.prototype.resize = function () {
 };
 
 AnimationItem.prototype.setSubframe = function(flag){
-    this.subframeEnabled = flag ? true : false;
+    this.isSubframeEnabled = !!flag;
 };
 
 AnimationItem.prototype.gotoFrame = function () {
-    this.currentFrame = this.subframeEnabled ? this.currentRawFrame : ~~this.currentRawFrame;
+    this.currentFrame = this.isSubframeEnabled ? this.currentRawFrame : ~~this.currentRawFrame;
 
     if(this.timeCompleted !== this.totalFrames && this.currentFrame > this.timeCompleted){
         this.currentFrame = this.timeCompleted;
@@ -9291,8 +9614,9 @@ AnimationItem.prototype.play = function (name) {
     if(name && this.name != name){
         return;
     }
-    if(this.isPaused === true){
+    if (this.isPaused === true) {
         this.isPaused = false;
+        this.audioController.resume();
         if(this._idle){
             this._idle = false;
             this.trigger('_active');
@@ -9308,6 +9632,7 @@ AnimationItem.prototype.pause = function (name) {
         this.isPaused = true;
         this._idle = true;
         this.trigger('_idle');
+        this.audioController.pause();
     }
 };
 
@@ -9504,8 +9829,34 @@ AnimationItem.prototype.setDirection = function (val) {
     this.updaFrameModifier();
 };
 
+AnimationItem.prototype.setVolume = function (val, name) {
+    if (name && this.name !== name) {
+        return;
+    }
+    this.audioController.setVolume(val);
+};
+
+AnimationItem.prototype.getVolume = function () {
+    return this.audioController.getVolume();
+};
+
+AnimationItem.prototype.mute = function (name) {
+    if (name && this.name !== name) {
+        return;
+    }
+    this.audioController.mute();
+};
+
+AnimationItem.prototype.unmute = function (name) {
+    if(name && this.name !== name){
+        return;
+    }
+    this.audioController.unmute();
+};
+
 AnimationItem.prototype.updaFrameModifier = function () {
     this.frameModifier = this.frameMult * this.playSpeed * this.playDirection;
+    this.audioController.setRate(this.playSpeed * this.playDirection)
 };
 
 AnimationItem.prototype.getPath = function () {
@@ -9703,9 +10054,12 @@ lottie.inBrowser = inBrowser;
 lottie.installPlugin = installPlugin;
 lottie.freeze = animationManager.freeze;
 lottie.unfreeze = animationManager.unfreeze;
+lottie.setVolume = animationManager.setVolume;
+lottie.mute = animationManager.mute;
+lottie.unmute = animationManager.unmute;
 lottie.getRegisteredAnimations = animationManager.getRegisteredAnimations;
 lottie.__getFactory = getFactory;
-lottie.version = '5.6.9';
+lottie.version = '5.7.3';
 
 function checkReady() {
     if (document.readyState === "complete") {
