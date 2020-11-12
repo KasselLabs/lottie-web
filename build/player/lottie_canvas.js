@@ -4408,11 +4408,24 @@ var ImagePreloader = (function(){
     function createImageData(assetData) {
         var path = getAssetsPath(assetData, this.assetsPath, this.path);
         var img = createNS('image');
-        img.addEventListener('load', this._imageLoaded, false);
-        img.addEventListener('error', function() {
-            ob.img = proxyImage;
-            this._imageLoaded();
-        }.bind(this), false);
+        var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isSafari) {
+          // Safari is not firing the 'load' event for 'SVGImageElement', this
+          // workaround solves it.
+          var hiddenImage = document.createElement('img')
+          hiddenImage.addEventListener('load', this._imageLoaded, false);
+          hiddenImage.addEventListener('error', function() {
+              ob.img = proxyImage;
+              this._imageLoaded();
+          }.bind(this), false);
+          hiddenImage.src = path;
+        } else {
+          img.addEventListener('load', this._imageLoaded, false);
+          img.addEventListener('error', function() {
+              ob.img = proxyImage;
+              this._imageLoaded();
+          }.bind(this), false);
+        }
         img.setAttributeNS('http://www.w3.org/1999/xlink','href', path);
         var ob = {
             img: img,
@@ -4509,6 +4522,7 @@ var ImagePreloader = (function(){
 
     return ImagePreloader;
 }());
+
 var featureSupport = (function(){
 	var ob = {
 		maskType: true
